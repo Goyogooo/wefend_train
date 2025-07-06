@@ -1,13 +1,9 @@
-# Q
 import torch
 import torch.nn as nn
 
 class EmbeddingLayer(nn.Module):
     """
-    词向量层
-    ————
-    功能：将词 ID 映射到密集向量
-    加载 DSG 预训练权重
+    词向量层：将词 ID 映射到密集向量，即加载 DSG 预训练权重
     """
     def __init__(self, vocab_size, embedding_dim, embedding_matrix=None, trainable=False):
         """
@@ -20,14 +16,13 @@ class EmbeddingLayer(nn.Module):
         """
         super().__init__()
         if embedding_matrix is not None:
-            # 使用预训练权重初始化 embedding，并根据 trainable 设置是否微调
-            self.embedding = nn.Embedding(vocab_size, embedding_dim)
+            self.embedding = nn.Embedding(vocab_size, embedding_dim)# 创建一个 nn.Embedding 层
             self.embedding.weight = nn.Parameter(torch.tensor(embedding_matrix, dtype=torch.float32),
-                                                 requires_grad=trainable)
+                                                 requires_grad=trainable)# 用传入的 embedding_matrix 初始化 weight 参数
         else:
             # 随机初始化词向量
             self.embedding = nn.Embedding(vocab_size, embedding_dim)
-            nn.init.uniform_(self.embedding.weight, a=-0.05, b=0.05)  # 等价于 TensorFlow 的 "uniform"
+            nn.init.uniform_(self.embedding.weight, a=-0.05, b=0.05) 
             self.embedding.weight.requires_grad = True
 
     def forward(self, inputs):

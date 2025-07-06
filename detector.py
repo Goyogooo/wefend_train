@@ -9,12 +9,13 @@ import os
 import random
 from selector import Selector, build_selector_state
 from text_cnn_encoder import TextCNNEncoder
+from itertools import cycle
 
-VOCAB_PATH     = "new-data/merged_title_vocab.json"
-EMBEDDING_PATH = "new-data/title_dsg.npy"
-LABELED_PATH   = "new-data/labeled_train_processed.json"
-VAL_PATH       = "new-data/val_labeled_processed.json"
-WEAK_PATH      = "new-data/train_weak_processed.json"
+VOCAB_PATH     = "data2/merged_title_vocab.json"
+EMBEDDING_PATH = "data2/title_dsg.npy"
+LABELED_PATH   = "data2/labeled_train_processed.json"
+VAL_PATH       = "data2/val_labeled_processed.json"
+WEAK_PATH      = "data2/train_weak_processed.json"
 SEQ_LENGTH     = 23
 BATCH_SIZE     = 100
 EPOCHS         = 100
@@ -23,7 +24,7 @@ BAG_SIZE       = 100
 NUM_BAGS       = 200
 BETA           = 1.0
 PATIENCE       = 10
-os.makedirs("checkpoints", exist_ok=True)
+os.makedirs("saved_models", exist_ok=True)
 
 
 torch.manual_seed(42)
@@ -137,7 +138,7 @@ def train_detector_with_selector():
     print(f"[初始基线模型] 验证集 accuracy: {baseline_acc:.4f}")
     
     # 保存第0次训练检测器模型
-    torch.save(detector.state_dict(), "checkpoints/detector_round_0.pt")
+    torch.save(detector.state_dict(), "saved_models/detector_round_0.pt")
 
     all_best_f1 = 0
     all_patience_counter = 0
@@ -187,28 +188,29 @@ def train_detector_with_selector():
             
             # 5.2.2 重新训练基础模型判断性能提升，（只用于计算新 reward）
             reward_model = FakeNewsDetector(vocab_size, embedding_dim, embedding_matrix).to(device)
-            reward_model.load_state_dict(torch.load("checkpoints/detector_round_0.pt", weights_only=True))
+            reward_model.load_state_dict(torch.load("saved_models/detector_round_0.pt", weights_only=True))
             reward_optimizer = optim.Adam(reward_model.parameters(), lr=LEARNING_RATE)
             
             # 创建数据加载器
             sup_loader = make_dataloader(train_inputs, train_labels, BATCH_SIZE)
             pseudo_loader = make_dataloader(bag_selected_inputs, bag_selected_labels, BATCH_SIZE)
             
+            len_sup = len(sup_loader)
+            len_pseudo = len(pseudo_loader)
+            num_batches = max(len_sup, len_pseudo)
             # 训练奖励模型
             
             best_val_acc = 0
             patience_counter = 0
+            
             for epoch in range(EPOCHS):
                 reward_model.train()
-                sup_iter = iter(sup_loader)
-                pseudo_iter = iter(pseudo_loader)
+                sup_iter = cycle(sup_loader) if len_sup < len_pseudo else iter(sup_loader)
+                pseudo_iter = cycle(pseudo_loader) if len_pseudo < len_sup else iter(pseudo_loader)
                 
-                for _ in range(min(len(sup_loader), len(pseudo_loader))):
-                    try:
-                        x_sup, y_sup = next(sup_iter)
-                        x_pseudo, y_pseudo = next(pseudo_iter)
-                    except StopIteration:
-                        break
+                for _ in range(num_batches):
+                    x_sup, y_sup = next(sup_iter)
+                    x_pseudo, y_pseudo = next(pseudo_iter)
                     
                     y_sup = y_sup.view(-1, 1)
                     y_pseudo = y_pseudo.view(-1, 1)
@@ -245,11 +247,11 @@ def train_detector_with_selector():
                 else:
                     patience_counter += 1
                     if patience_counter >= PATIENCE:
-                        print(f"[Early Stop] reward_model 第 {epoch+1} 轮停止，best_acc={best_val_acc:.4f}")
+                        # print(f"[Early Stop] reward_model 第 {epoch+1} 轮停止，best_acc={best_val_acc:.4f}")
                         break
 
             reward_k = best_val_acc - baseline_acc  # 当前轮性能提升作为奖励
-            print(f"[选择后训练] acc_k={best_val_acc:.4f}, baseline_acc={baseline_acc:.4f}, reward={reward_k:.4f}")
+            # print(f"[选择后训练] acc_k={best_val_acc:.4f}, baseline_acc={baseline_acc:.4f}, reward={reward_k:.4f}")
 
             # 5.2.4 更新选择器策略网络
             selector.train()
@@ -270,7 +272,7 @@ def train_detector_with_selector():
             print(f"[Selector] loss={reinforce_loss.item():.6f} ")
         
         # 5.3 保存选择器结果
-        torch.save(selector.state_dict(), f"checkpoints/selector_round_{round+1}.pt")
+        torch.save(selector.state_dict(), f"saved_models/selector_round_{round+1}.pt")
 
         # 5.4 选择器第2次采样，选择检测器输入样本
         re_total_sample_size = NUM_BAGS * BAG_SIZE  # 一次性采样 NUM_BAGS × BAG_SIZE 个不重复样本
@@ -310,19 +312,20 @@ def train_detector_with_selector():
         pseudo_loader = make_dataloader(selected_inputs, selected_labels, BATCH_SIZE) 
         detector_optimizer = optim.Adam(detector.parameters(), lr=LEARNING_RATE)
         
+        len_sup = len(sup_loader)
+        len_pseudo = len(pseudo_loader)
+        num_batches = max(len_sup, len_pseudo)
+
         d_best_f1 = 0
         d_patience_counter = 0
         for epoch in range(EPOCHS):
             detector.train()
-            sup_iter = iter(sup_loader)
-            pseudo_iter = iter(pseudo_loader)
-            
-            for _ in range(min(len(sup_loader), len(pseudo_loader))):
-                try:
-                    x_sup, y_sup = next(sup_iter)
-                    x_pseudo, y_pseudo = next(pseudo_iter)
-                except StopIteration:
-                    break
+            sup_iter = cycle(sup_loader) if len_sup < len_pseudo else iter(sup_loader)
+            pseudo_iter = cycle(pseudo_loader) if len_pseudo < len_sup else iter(pseudo_loader)
+
+            for _ in range(num_batches):
+                x_sup, y_sup = next(sup_iter)
+                x_pseudo, y_pseudo = next(pseudo_iter)
                 
                 y_sup = y_sup.view(-1, 1)
                 y_pseudo = y_pseudo.view(-1, 1)
@@ -364,16 +367,17 @@ def train_detector_with_selector():
                     print(f"[Early Stop] detector 第 {epoch+1} 轮停止，best_f1={d_best_f1:.4f}")
                     break
 
-        # 5.6 检测器结果保存
-        torch.save(detector.state_dict(), f"checkpoints/detector_round_{round+1}_{d_best_f1:.4f}.pt")
 
+        # 大循环判断
         if d_best_f1 > all_best_f1:
             all_best_f1 = d_best_f1
             all_patience_counter = 0
+            torch.save(detector.state_dict(), f"saved_models/wefend_detector.pt")
         else:
             all_patience_counter += 1
-            if all_patience_counter >= 5:
+            if all_patience_counter >= 3:
                 print(f"[Early Stop] detector 第 {epoch+1} 轮停止，best_f1={d_best_f1:.4f}")
+                detector.load_state_dict(torch.load("saved_models/wefend_detector.pt"))
                 break
             
     # 使用验证集评估
@@ -396,3 +400,10 @@ def train_detector_with_selector():
 
 if __name__ == "__main__":
     train_detector_with_selector()
+
+#     Accuracy: 0.9683663833805477
+# AUC-ROC:  0.9852631994436841
+#               precision    recall  f1-score   support
+
+#          0.0     0.9783    0.9790    0.9787      1569
+#          1.0     0.9398    0.9381    0.9389       549

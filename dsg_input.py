@@ -1,7 +1,6 @@
 import pandas as pd
 import jieba
 import json
-import os
 import numpy as np
 from collections import Counter
 from sklearn.model_selection import train_test_split
@@ -14,7 +13,7 @@ SAVED_TRAIN_CSV = "train_split_80.csv"  # 80%新训练集
 SAVED_VAL_CSV = "val_split_20.csv"      # 20%验证集
 
 VOCAB_OUT = "vocab.json"
-TRAIN_DSG_TXT = "train_dsg_corpus.txt"  # 仅训练集需要DSG语料
+TRAIN_DSG_TXT = "train_dsg_corpus.txt" 
 TRAIN_GROUPED_JSON = "train_grouped.json"
 VAL_GROUPED_JSON = "val_grouped.json"
 TEST_GROUPED_JSON = "test_grouped.json"
@@ -25,9 +24,10 @@ RANDOM_STATE = 42
 
 
 def tokenize(text):
-    """中文分词（复用jieba）"""
+    """中文分词"""
     return list(jieba.cut(str(text).strip()))
 
+# 结果是58
 def analyze_lengths(token_lists, percentile=95):
     """统计token序列长度，返回指定分位数的长度作为max_seq_len"""
     lengths = [len(tokens) for tokens in token_lists if tokens]
@@ -104,46 +104,34 @@ def write_dsg_corpus(tokens_list, vocab, max_seq_len, save_path):
 
 def main():
     # 1. 读取原始训练集并划分8:2，保存原始格式
-    print("\n===== 步骤1: 划分并保存训练集与验证集（原始格式） =====")
     df_original = pd.read_csv(ORIGINAL_TRAIN_CSV)
     print(f"原始训练集总样本数: {len(df_original)}")
-    # 分层抽样划分，保持label分布一致
     df_train, df_val = train_test_split(
         df_original, test_size=0.2, random_state=RANDOM_STATE, stratify=df_original["label"]
-    )
-    # 保存为原始CSV格式
-    df_train.to_csv(SAVED_TRAIN_CSV, index=False, encoding="utf-8")
+    )# 分层抽样划分，保持label分布一致
+    df_train.to_csv(SAVED_TRAIN_CSV, index=False, encoding="utf-8")# 保存为原始CSV格式
     df_val.to_csv(SAVED_VAL_CSV, index=False, encoding="utf-8")
     print(f"[保存] 新训练集（80%）至 {SAVED_TRAIN_CSV}，样本数: {len(df_train)}")
     print(f"[保存] 验证集（20%）至 {SAVED_VAL_CSV}，样本数: {len(df_val)}")
 
     # 2. 基于新训练集（80%）进行预处理
-    print("\n===== 步骤2: 处理新训练集（80%） =====")
-    # 读取划分后的训练集
     df_train_processed = pd.read_csv(SAVED_TRAIN_CSV)
     train_tokens = read_tokens_from_df(df_train_processed)
-    # 确定max_seq_len
-    max_seq_len = analyze_lengths(train_tokens, percentile=PERCENTILE)
-    # 构建并保存词表
-    vocab = build_vocab(train_tokens)
+    max_seq_len = analyze_lengths(train_tokens, percentile=PERCENTILE)# 确定max_seq_len
+    vocab = build_vocab(train_tokens)# 构建并保存词表
     with open(VOCAB_OUT, "w", encoding="utf-8") as f:
         json.dump(vocab, f, ensure_ascii=False, indent=2)
     print(f"[保存] 词表至 {VOCAB_OUT}")
-    # 生成训练集DSG语料和分组JSON
-    write_dsg_corpus(train_tokens, vocab, max_seq_len, TRAIN_DSG_TXT)
+    write_dsg_corpus(train_tokens, vocab, max_seq_len, TRAIN_DSG_TXT)# 生成训练集DSG语料和分组JSON
     save_grouped_json(df_train_processed, vocab, max_seq_len, TRAIN_GROUPED_JSON)
 
-    # 3. 处理验证集（复用训练集参数）
-    print("\n===== 步骤3: 处理验证集 =====")
+    # 3. 处理验证集
     df_val_processed = pd.read_csv(SAVED_VAL_CSV)
     save_grouped_json(df_val_processed, vocab, max_seq_len, VAL_GROUPED_JSON)
 
-    # 4. 处理测试集（复用训练集参数）
-    print("\n===== 步骤4: 处理测试集 =====")
+    # 4. 处理测试集
     df_test = pd.read_csv(TEST_CSV)
     save_grouped_json(df_test, vocab, max_seq_len, TEST_GROUPED_JSON)
-
-    print("\n===== 所有处理完成 =====")
 
 if __name__ == "__main__":
     main()

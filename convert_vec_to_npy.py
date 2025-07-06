@@ -3,9 +3,9 @@ import json
 import numpy as np
 
 def convert_vec_to_npy():
-    vec_path = "new-data/title_dsg.vec"
-    vocab_path = "new-data/merged_title_vocab.json"
-    npy_out_path = "new-data/title_dsg.npy"
+    vec_path = "data2/dsg_embedding.vec"
+    vocab_path = "data2/merged_title_vocab.json"
+    npy_out_path = "data2/title_dsg.npy"
 
     # 载入vocab
     with open(vocab_path, 'r', encoding='utf-8') as f:

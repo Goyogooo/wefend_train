@@ -8,18 +8,28 @@ import os
 
 
 # [INFO] 基于Title确定max_seq_len: 23
-# 输入数据路径（区分格式：有标签数据为CSV，弱标注数据为JSON）
-WEAK_TRAIN_PATH = "new-data/train_weak_data.json"  # 弱标注训练集（JSON）
-LABELED_TRAIN_PATH = "new-data/train_split_80.csv"  # 有标签训练集（CSV）
-# 输出路径（分开保存处理后的两类数据集）
-WEAK_PROCESSED_PATH = "new-data/train_weak_processed.json"
-LABELED_PROCESSED_PATH = "new-data/labeled_train_processed.json"
-# 词表和嵌入路径（合并构建）
-MERGED_VOCAB_PATH = "new-data/merged_title_vocab.json"  # 仅基于Title的合并词表
+# WEAK_TRAIN_PATH = "new-data/train_weak_data.json" 
+LABELED_TRAIN_PATH = "new-data/train_split_80.csv" 
+
+# WEAK_PROCESSED_PATH = "new-data/train_weak_processed.json"
+LABELED_PROCESSED_PATH = "data2/labeled_train_processed.json"
+
+MERGED_VOCAB_PATH = "data2/merged_title_vocab.json"  
 VAL_PATH = "new-data/val_split_20.csv"
-VAL_PROCESSED_PATH = "new-data/val_labeled_processed.json"
+VAL_PROCESSED_PATH = "data2/val_labeled_processed.json"
 
+##########
+TEST_PATH = "data-all/data/test/news.csv"
+TEST_PROCESSED_PATH = "data2/test_labeled_processed.json"
 
+UNLABELED_PATH = "data-all/data/unlabeled data/news.csv"
+UNLABELED_PROCESSED_PATH = "data2/unlabeled_processed.json"
+
+VAL_WEAK_PATH="data2/new_val_set.json"
+VAL_WEAK_PROCESSED_PATH="data2/val_weak_processed.json"
+
+TRAIN_WEAK_DATA_PATH = "data2/train_weak_data.json"
+TRAIN_WEAK_PROCESSED_PATH = "data2/train_weak_processed.json"
 
 def load_weak_data(path):
     """加载弱标注数据（JSON格式），提取Title字段"""
@@ -79,7 +89,7 @@ def process_dataset(data, max_seq_len, vocab=None):
     return processed_data
 
 def collect_title_vocab(data):
-    """仅从Title收集词汇，构建词表（忽略report）"""
+    """仅从Title收集词汇，构建词表"""
     vocab = defaultdict(int)
     for item in data:
         title = str(item.get('Title', '')).strip()
@@ -108,16 +118,13 @@ def write_title_dsg_corpus(processed_datasets, vocab, save_path):
 
 if __name__ == "__main__":
     # 1. 加载两类原始数据
-    print("[INFO] 加载数据...")
-    weak_data = load_weak_data(WEAK_TRAIN_PATH)
-    labeled_data = load_labeled_data(LABELED_TRAIN_PATH)
-    val_data = load_labeled_data(VAL_PATH)
-    print(f"[INFO] 弱标注训练集样本数: {len(weak_data)}")
-    print(f"[INFO] 有标注训练集样本数: {len(labeled_data)}")
-    print(f"[INFO] 验证集样本数: {len(val_data)}") 
+    weak_data = load_weak_data(TRAIN_WEAK_DATA_PATH)# 原始弱标注训练集
+    labeled_data = load_labeled_data(LABELED_TRAIN_PATH)# 原始标注训练集
+    val_data = load_labeled_data(VAL_PATH)# 原始标注验证集
+    val_weak_data = load_weak_data(VAL_WEAK_PATH)# 原始弱标注验证集
+    test_data = load_labeled_data(TEST_PATH)# 原始测试集
 
-    # 2. 仅基于Title计算max_seq_len（合并两类数据的Title长度）
-    print("[INFO] 统计Title长度，确定max_seq_len...")
+    # 2. 仅基于Title计算max_seq_len
     weak_title_lengths = get_title_lengths(weak_data)
     labeled_title_lengths = get_title_lengths(labeled_data)
     all_title_lengths = weak_title_lengths + labeled_title_lengths
@@ -130,7 +137,7 @@ if __name__ == "__main__":
     weak_title_vocab = collect_title_vocab(weak_data)
     labeled_title_vocab = collect_title_vocab(labeled_data)
     all_title_vocab = {**weak_title_vocab,** labeled_title_vocab}
-    # 添加特殊符号（仅用于Title的padding和未登录词）
+    # 添加特殊符号
     vocab_list = ["<PAD>", "<UNK>"] + [word for word in all_title_vocab.keys()]
     merged_vocab = {word: idx for idx, word in enumerate(vocab_list)}
     # 保存合并词表
@@ -138,18 +145,18 @@ if __name__ == "__main__":
         json.dump(merged_vocab, f, ensure_ascii=False, indent=2)
     print(f"[INFO] 合并Title词表已保存至: {MERGED_VOCAB_PATH}，大小: {len(merged_vocab)}")
 
-    # 4. 分别处理两类数据集（仅对Title进行padding，用合并词表转ID）
-    print("[INFO] 处理数据集（仅处理Title）...")
+    # 4. 处理数据集
+    print("[INFO] 处理数据集...")
     weak_processed = process_dataset(weak_data, max_seq_len, merged_vocab)
     labeled_processed = process_dataset(labeled_data, max_seq_len, merged_vocab)
     val_processed = process_dataset(val_data, max_seq_len, merged_vocab) 
+    val_weak_processed = process_dataset(val_weak_data, max_seq_len, merged_vocab) 
+    test_processed = process_dataset(test_data, max_seq_len, merged_vocab) 
 
     # 5. 分开保存处理后的两类数据集
     print("[INFO] 保存处理后的数据集...")
-    for path in [WEAK_PROCESSED_PATH, LABELED_PROCESSED_PATH]:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
     # 保存弱标注训练集
-    with open(WEAK_PROCESSED_PATH, 'w', encoding='utf-8') as f:
+    with open(TRAIN_WEAK_PROCESSED_PATH, 'w', encoding='utf-8') as f:
         json.dump(weak_processed, f, ensure_ascii=False, indent=2)
     # 保存有标注训练集
     with open(LABELED_PROCESSED_PATH, 'w', encoding='utf-8') as f:
@@ -157,12 +164,18 @@ if __name__ == "__main__":
     # 保存验证集
     with open(VAL_PROCESSED_PATH, 'w', encoding='utf-8') as f:
         json.dump(val_processed, f, ensure_ascii=False, indent=2)
+    with open(VAL_WEAK_PROCESSED_PATH, 'w', encoding='utf-8') as f:
+        json.dump(val_weak_processed, f, ensure_ascii=False, indent=2)
+    with open(TEST_PROCESSED_PATH, 'w', encoding='utf-8') as f:
+        json.dump(test_processed, f, ensure_ascii=False, indent=2)
     
-    print(f"[INFO] 弱标注训练集已保存至: {WEAK_PROCESSED_PATH}")
+    print(f"[INFO] 弱标注训练集已保存至: {TRAIN_WEAK_PROCESSED_PATH}")
     print(f"[INFO] 有标注训练集已保存至: {LABELED_PROCESSED_PATH}")
     print(f"[INFO] 验证集已保存至: {VAL_PROCESSED_PATH}") 
+    print(f"[INFO] 弱标注验证集已保存至: {VAL_WEAK_PROCESSED_PATH}") 
+    print(f"[INFO] 测试集集已保存至: {TEST_PROCESSED_PATH}") 
 
     print("[INFO] 生成Title的DSG输入语料...")
     processed_datasets = [weak_processed, labeled_processed]
-    write_title_dsg_corpus(processed_datasets, merged_vocab, "new-data/title_dsg_corpus.txt")
+    write_title_dsg_corpus(processed_datasets, merged_vocab, "data2/title_dsg_corpus.txt")
     print("[INFO] 所有处理完成")

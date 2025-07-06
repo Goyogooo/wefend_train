@@ -13,7 +13,7 @@ from text_cnn_encoder import TextCNNEncoder
 VOCAB_PATH     = "new-data/vocab.json"
 EMBEDDING_PATH = "new-data/dsg_embedding.npy"
 TEST_JSON_PATH = "new-data/test_grouped.json"
-WEIGHTS_PATH   = "saved_models/best_annotator.pt"
+WEIGHTS_PATH   = "saved_models/best_annotator2.pt"
 SEQ_LENGTH     = 58
 BATCH_SIZE     = 100
 DEVICE         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -87,7 +87,7 @@ def evaluate():
             lens = lens.to(DEVICE)
             preds = model(x, lens).squeeze()
             all_probs.extend(preds.cpu().numpy())
-            all_preds.extend((preds >= 0.55).int().cpu().numpy())
+            all_preds.extend((preds >= 0.5).int().cpu().numpy())
 
     final_preds = np.array(all_preds)
     preds_prob = np.array(all_probs)
@@ -107,3 +107,20 @@ if __name__ == "__main__":
 
 #          0.0     0.9125    0.8515    0.8809      8642
 #          1.0     0.3754    0.5220    0.4367      1477
+
+
+
+# Accuracy: 0.8099614586421583
+# AUC-ROC:  0.7844934525644076
+#               precision    recall  f1-score   support
+
+#          0.0     0.9121    0.8604    0.8855      8642
+#          1.0     0.3866    0.5146    0.4415      1477
+
+
+# Accuracy: 0.8088743947030339
+# AUC-ROC:  0.8049475589369484
+#               precision    recall  f1-score   support
+
+#          0.0     0.9140    0.8569    0.8845      8642
+#          1.0     0.3867    0.5281    0.4465      1477

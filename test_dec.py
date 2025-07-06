@@ -15,24 +15,11 @@ from text_cnn_encoder import TextCNNEncoder
 
 
 # [INFO] 基于Title确定max_seq_len: 23
-MERGED_VOCAB_PATH = "new-data/merged_title_vocab.json"  
-EMBEDDING_PATH = "new-data/title_dsg.npy"
-
-TEST_PATH = "data-all/data/test/news.csv"
-TEST_PROCESSED_PATH = "new-data/test_labeled_processed.json"
-
+EMBEDDING_PATH = "data2/title_dsg.npy"
+TEST_PROCESSED_PATH = "data2/test_labeled_processed.json"
 # MODEL_PATH = "checkpoints/semi_cnn_detector.pt"
-MODEL_PATH = "checkpoints/weak_detector.pt"
-BASE_MODEL_PATH = "checkpoints/detector_round_0.pt"
-
-UNLABELED_PATH = "data-all/data/unlabeled data/news.csv"
-UNLABELED_PROCESSED_PATH = "new-data/unlabeled_processed.json"
-
-VAL_WEAK_PATH="data2/new_val_set.json"
-VAL_WEAK_PROCESSED_PATH="data2/val_weak_processed.json"
-
-TRAIN_WEAK_DATA_PATH = "data2/train_weak_data.json"
-TRAIN_WEAK_PROCESSED_PATH = "data2/train_weak_processed.json"
+MODEL_PATH = "saved_models/noselect_detector.pt"
+# BASE_MODEL_PATH = "checkpoints/detector_round_0.pt"
 
 SEQ_LENGTH = 23
 BATCH_SIZE = 100
@@ -40,27 +27,6 @@ BATCH_SIZE = 100
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"使用设备: {device}")
 
-# 加载词表
-def load_vocab(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-# 原始csv格式
-def load_labeled_data(path):
-    """加载有标签数据（CSV格式），转换为字典列表"""
-    df = pd.read_csv(path)
-    # 处理字段名大小写，统一为'Title'
-    if 'title' in df.columns:
-        df = df.rename(columns={'title': 'Title'})
-    # 转换为字典列表，保留所有原始字段
-    data = df.to_dict('records')
-    return data
-
-# json 包含weak_label or label
-def load_val_weak_data(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data  # 保留所有字段，包括 weak_label 和 pred_prob
 
 # 加载有标签数据
 def load_labeled_title_data(path):
@@ -70,46 +36,12 @@ def load_labeled_title_data(path):
     labels = [item["label"] for item in data]
     return inputs, labels
 
-def process_title(title, max_seq_len, vocab=None):
-    """仅对Title进行分词、截断/补全（padding），可选转为ID"""
-    title_str = str(title).strip()
-    tokens = jieba.lcut(title_str) if title_str else []
-    # 截断过长
-    if len(tokens) > max_seq_len:
-        tokens = tokens[:max_seq_len]
-    # 补全过短（仅对Title用<PAD>）
-    pad_len = max_seq_len - len(tokens)
-    tokens += ["<PAD>"] * pad_len
-    # 若提供vocab则转为ID
-    if vocab is not None:
-        tokens = [vocab.get(token, vocab["<UNK>"]) for token in tokens]
-    return tokens
-
-def process_dataset(data, max_seq_len, vocab=None):
-    """处理数据集：仅对Title进行padding，保留report原始值"""
-    processed_data = []
-    for item in data:
-        processed_item = item.copy()  # 保留所有原始字段
-        # 处理Title（仅对Title进行padding）
-        title = item.get('Title', '')
-        processed_item['Title'] = process_title(title, max_seq_len, vocab)
-        # 不处理report，保留原始值（若存在）
-        if 'Report Content' in processed_item:
-            processed_item['Report Content'] = str(processed_item['Report Content']).strip()
-        elif 'reports' in processed_item:
-            processed_item['reports'] = [str(r).strip() for r in processed_item['reports']]
-        processed_data.append(processed_item)
-    return processed_data
-
-
 def make_dataloader(inputs, labels, batch_size, shuffle=False):
     """创建PyTorch数据加载器"""
     inputs_tensor = torch.tensor(inputs, dtype=torch.long).to(device)
     labels_tensor = torch.tensor(labels, dtype=torch.float32).to(device)
     dataset = TensorDataset(inputs_tensor, labels_tensor)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-
-
 
 def save_results_to_file(results, model_path, test_size, seq_length, save_path="test_results.txt"):
     """将评估指标保存到文件"""
@@ -125,33 +57,10 @@ def save_results_to_file(results, model_path, test_size, seq_length, save_path="
         f.write("\n分类报告:\n")
         f.write(results['classification_report'])
     print(f"\n评估结果已保存到 {save_path}")
-
-def process(path,processed_path):
-    print("[INFO] 加载数据...")
-    
-    path_data = load_labeled_data(path)
-    max_seq_len = SEQ_LENGTH
-    vocab = load_vocab(MERGED_VOCAB_PATH)
-    path_processed = process_dataset(path_data, max_seq_len, vocab)
-    print("[INFO] 保存处理后的数据集...")
-    with open(processed_path, 'w', encoding='utf-8') as f:
-        json.dump(path_processed, f, ensure_ascii=False, indent=2)
-
-def process_val_weak(path,processed_path):
-    print("[INFO] 加载数据...")
-    
-    path_data = load_val_weak_data(path)
-    max_seq_len = SEQ_LENGTH
-    vocab = load_vocab(MERGED_VOCAB_PATH)
-    path_processed = process_dataset(path_data, max_seq_len, vocab)
-    print("[INFO] 保存处理后的数据集...")
-    with open(processed_path, 'w', encoding='utf-8') as f:
-        json.dump(path_processed, f, ensure_ascii=False, indent=2)
-    
-# ===================== 测试评估函数 =====================
+  
 def evaluate_model(model, test_loader):
     """在测试集上评估模型性能"""
-    model.eval()  # 设置为评估模式
+    model.eval()  
     
     all_preds = []
     all_probs = []
@@ -163,7 +72,7 @@ def evaluate_model(model, test_loader):
             
             # 收集预测结果
             all_probs.extend(outputs.cpu().numpy().flatten())
-            all_preds.extend((outputs >= 0.55).int().cpu().numpy().flatten())
+            all_preds.extend((outputs >= 0.5).int().cpu().numpy().flatten())
             all_labels.extend(labels.cpu().numpy())
     
     # 转换为numpy数组
@@ -197,7 +106,7 @@ def evaluate_model(model, test_loader):
         "classification_report": report
     }
 
-# ===================== 主函数 =====================
+
 def test_wrapper(model_path):
     
     embedding_matrix = np.load(EMBEDDING_PATH)
@@ -220,7 +129,6 @@ def test_wrapper(model_path):
     test_loader = make_dataloader(test_inputs, test_labels, BATCH_SIZE)
     print(f"测试集大小: {len(test_inputs)}")
 
-    # 5. 评估模型
     results = evaluate_model(model, test_loader)
     
     save_results_to_file(
@@ -231,13 +139,39 @@ def test_wrapper(model_path):
         save_path=(f"{model_path}_results2.txt")
     )
 
-
-# -------------------------- 主流程 --------------------------
 if __name__ == "__main__":
-    # path = UNLABELED_PATH
-    # processed_path = UNLABELED_PROCESSED_PATH
-    # process(path,processed_path)
-    # model_path = MODEL_PATH
-    # test_wrapper(model_path)
-    process_val_weak(TRAIN_WEAK_DATA_PATH,TRAIN_WEAK_PROCESSED_PATH)
-    process_val_weak(VAL_WEAK_PATH,VAL_WEAK_PROCESSED_PATH)
+    model_path = MODEL_PATH
+    test_wrapper(model_path)
+
+# weak_cnn
+# 准确率 (Accuracy): 0.8435
+# AUC-ROC: 0.7484
+# F1分数: 0.4585
+
+# 分类报告:
+#               precision    recall  f1-score   support
+
+#          0.0     0.9068    0.9103    0.9085      8659
+#          1.0     0.4638    0.4534    0.4585      1482
+
+# wefend
+# 准确率 (Accuracy): 0.9080
+# AUC-ROC: 0.8888
+# F1分数: 0.6421
+
+# 分类报告:
+#               precision    recall  f1-score   support
+
+#          0.0     0.9285    0.9667    0.9472      8659
+#          1.0     0.7440    0.5648    0.6421      1482
+
+
+# 准确率 (Accuracy): 0.9125
+# AUC-ROC: 0.9065
+# F1分数: 0.6324
+
+# 分类报告:
+#               precision    recall  f1-score   support
+
+#          0.0     0.9219    0.9806    0.9504      8659
+#          1.0     0.8195    0.5148    0.6324      1482

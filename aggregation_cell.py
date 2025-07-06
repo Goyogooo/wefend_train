@@ -6,9 +6,10 @@ class AggregationCell(nn.Module):
     """
     聚合单元
     """
-    def __init__(self, output_dim=20):
+    def __init__(self, output_dim=20,dropout=0.3):
         super(AggregationCell, self).__init__()
         self.fc = nn.Linear(in_features=40, out_features=output_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, report_features, lengths=None, training=False):
         """
@@ -26,5 +27,7 @@ class AggregationCell(nn.Module):
         lengths = lengths.unsqueeze(1).to(dtype=report_features.dtype)
         pooled = summed / lengths  # (batch, feat_dim)
 
-        # 最后全连接 + ReLU
-        return F.relu(self.fc(pooled))    # (batch, output_dim)
+        # 先 fc + ReLU，再 Dropout
+        out = F.relu(self.fc(pooled))
+        out = self.dropout(out)
+        return out    # (batch, output_dim)

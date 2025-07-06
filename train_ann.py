@@ -21,10 +21,8 @@ BATCH_SIZE        = 100
 EPOCHS            = 100
 LEARNING_RATE     = 1e-4
 DEVICE            = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-PATIENCE = 20
-def load_vocab(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+PATIENCE = 10
+
 
 def load_grouped_json(path):
     with open(path, 'r', encoding='utf-8') as f:
@@ -33,11 +31,11 @@ def load_grouped_json(path):
     labels = [item["label"] for item in data]
     return inputs, labels
 
-# 处理原数据集单个新闻成为三元组，此新闻的所有举报，此新闻的标签，此新闻的举报数量
 class NewsDataset(Dataset):
+    """ return: 一个新闻的所有举报、标签、举报数"""
     def __init__(self, grouped_inputs, labels):
-        self.flat_inputs = [report for reports in grouped_inputs for report in reports]
-        self.lengths = [len(reports) for reports in grouped_inputs]
+        self.flat_inputs = [report for reports in grouped_inputs for report in reports]# 所有举报拍平
+        self.lengths = [len(reports) for reports in grouped_inputs]# 记录每条新闻包含几条举报
         self.labels = labels
         self.seq_length = SEQ_LENGTH
 
@@ -45,14 +43,14 @@ class NewsDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        start = sum(self.lengths[:idx])# 定位当前新闻的举报范围
+        start = sum(self.lengths[:idx])# 根据 lengths 定位在 flat_inputs 的起止位置
         end = start + self.lengths[idx]
         reports = self.flat_inputs[start:end]
-        reports = [r + [0] * (self.seq_length - len(r)) if len(r) < self.seq_length else r[:self.seq_length] for r in reports]# 统一序列长度
+        reports = [r + [0] * (self.seq_length - len(r)) if len(r) < self.seq_length else r[:self.seq_length] for r in reports]
         return torch.tensor(reports, dtype=torch.long), torch.tensor(self.labels[idx], dtype=torch.float), self.lengths[idx]
 
-# 合并一个批次的新闻数据成为三元组，所有新闻的举报，所有新闻的标签，所有新闻的举报数
 def collate_fn(batch):
+    """合并一个批次的新闻数据成为三元组: 所有新闻的举报，所有新闻的标签，所有新闻的举报数"""
     flat_reports = []
     labels = []
     lengths = []
@@ -72,20 +70,19 @@ def evaluate(model, dataloader):
             x, y, lens = x.to(DEVICE), y.to(DEVICE), lens.to(DEVICE)
             preds = model(x, lens).squeeze()
             all_probs.extend(preds.cpu().numpy())
-            all_preds.extend((preds >= 0.55).int().cpu().numpy())
+            all_preds.extend((preds >= 0.5).int().cpu().numpy())
             all_labels.extend(y.cpu().numpy())
     return np.array(all_preds), np.array(all_probs), np.array(all_labels)
 
 def main():
-    # 加载词典与嵌入
-    vocab = load_vocab(VOCAB_PATH)
+    # 加载词嵌入矩阵
     embedding_matrix = np.load(EMBEDDING_PATH)
     vocab_size, embedding_dim = embedding_matrix.shape
 
     # 构建模型
     text_cnn = TextCNNEncoder(
         vocab_size, embedding_dim, embedding_matrix,
-        filter_sizes=[1, 2, 3, 4, 5, 6], num_filters=40, feature_dim=40
+        filter_sizes=[1, 2, 3, 4, 5, 6], num_filters=40, feature_dim=40,embedding_trainable=True
     )
     agg_cell = AggregationCell(output_dim=20)
     model = Annotator(text_cnn, agg_cell).to(DEVICE)
@@ -99,9 +96,10 @@ def main():
     val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
 
     # 类别权重
-    class_weights = class_weight.compute_class_weight(class_weight='balanced',
-                                                      classes=np.unique(train_labels),
-                                                      y=np.array(train_labels))
+    # class_weights = class_weight.compute_class_weight(class_weight='balanced',
+    #                                                   classes=np.unique(train_labels),
+    #                                                   y=np.array(train_labels))
+    class_weights = np.array([1.0, 3.0]) 
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(DEVICE)
     criterion = nn.BCELoss(reduction='none')
     optimizer = Adam(model.parameters(), lr=LEARNING_RATE)
@@ -136,16 +134,16 @@ def main():
             best_f1 = current_f1
             count = 0
             os.makedirs("saved_models", exist_ok=True)
-            torch.save(model.state_dict(), "saved_models/best_annotator.pt")
+            torch.save(model.state_dict(), "saved_models/best_annotator2.pt")
         else:
             count += 1
             print(f"验证集 F1 未提升，等待轮数: {count}/{PATIENCE}")
             if count >= PATIENCE:
                 print("[INFO] 早停触发，验证集 F1 不再提升")
-                model.load_state_dict(torch.load("saved_models/best_annotator.pt", map_location=DEVICE))
+                model.load_state_dict(torch.load("saved_models/best_annotator2.pt", map_location=DEVICE))
                 break
     
-    model.load_state_dict(torch.load("saved_models/best_annotator.pt"))
+    model.load_state_dict(torch.load("saved_models/best_annotator2.pt"))
 
 if __name__ == "__main__":
     main()
@@ -159,3 +157,19 @@ if __name__ == "__main__":
 #          0.0     0.9329    0.8530    0.8912      1565
 #          1.0     0.6628    0.8248    0.7350       548
 
+
+
+# Accuracy: 0.8319924278277331
+# AUC-ROC:  0.9149081178144166
+#               precision    recall  f1-score   support
+
+#          0.0     0.9423    0.8236    0.8790      1565
+#          1.0     0.6295    0.8558    0.7254       548
+
+
+# Accuracy: 0.853289162328443
+# AUC-ROC:  0.9223939507007766
+#               precision    recall  f1-score   support
+
+#          0.0     0.9361    0.8607    0.8968      1565
+#          1.0     0.6766    0.8321    0.7463       548

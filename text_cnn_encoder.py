@@ -6,9 +6,7 @@ from embedding_layer import EmbeddingLayer
 
 class TextCNNEncoder(nn.Module):
     """
-    TextCNN 编码器
-    ————
-    将一条举报文本编码成 40 维特征向量
+    TextCNN 编码器：将一条举报文本编码成 40 维特征向量
     结构：
       1. EmbeddingLayer → (batch, seq_len, emb_dim)
       2. expand_dims → (batch, seq_len, emb_dim, 1)

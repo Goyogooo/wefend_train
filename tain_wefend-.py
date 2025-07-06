@@ -12,11 +12,11 @@ from detector import FakeNewsDetector
 from selector import Selector, build_selector_state
 from text_cnn_encoder import TextCNNEncoder
 # ====================== 配置 ======================
-VOCAB_PATH     = "new-data/merged_title_vocab.json"
-EMBEDDING_PATH = "new-data/title_dsg.npy"
-LABELED_PATH   = "new-data/labeled_train_processed.json"
-VAL_PATH       = "new-data/val_labeled_processed.json"
-WEAK_PATH      = "new-data/train_weak_processed.json"
+VOCAB_PATH     = "data2/merged_title_vocab.json"
+EMBEDDING_PATH = "data2/title_dsg.npy"
+LABELED_PATH   = "data2/labeled_train_processed.json"
+VAL_PATH       = "data2/val_labeled_processed.json"
+WEAK_PATH      = "data2/train_weak_processed.json"
 SEQ_LENGTH     = 23
 BATCH_SIZE     = 100
 EPOCHS         = 100
@@ -25,7 +25,7 @@ BAG_SIZE       = 100
 NUM_BAGS       = 200
 BETA           = 1.0
 PATIENCE       = 10
-os.makedirs("checkpoints", exist_ok=True)
+os.makedirs("saved_models", exist_ok=True)
 
 # 设置随机种子确保可复现性
 torch.manual_seed(42)
@@ -124,14 +124,39 @@ def train():
         if val_f1 > d_best_f1:
             d_best_f1 = val_f1
             d_patience_counter = 0
+            torch.save(detector.state_dict(), f"saved_models/noselect_detector.pt")
         else:
             d_patience_counter += 1
             if d_patience_counter >= PATIENCE:
                 print(f"[Early Stop] detector 第 {epoch+1} 轮停止，best_f1={d_best_f1:.4f}")
+                detector.load_state_dict(torch.load("saved_models/noselect_detector.pt"))
                 break
 
     # 5.6 检测器结果保存
-    torch.save(detector.state_dict(), f"checkpoints/noselect_detector2.pt")
+    detector.eval()
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for inputs, labels in val_loader:
+            outputs = detector(inputs)
+            all_preds.extend(outputs.cpu().numpy().flatten())
+            all_labels.extend(labels.cpu().numpy())
+    
+    d_preds_prob = np.array(all_preds)
+    d_preds_bin = (d_preds_prob >= 0.5).astype(int)
+    d_y_true = np.array(all_labels)
+
+    # 输出评估指标
+    print("Accuracy:", accuracy_score(d_y_true, d_preds_bin))
+    print("AUC-ROC: ", roc_auc_score(d_y_true, d_preds_prob))
+    print(classification_report(d_y_true, d_preds_bin, digits=4))
     
 if __name__ == "__main__":
     train()
+
+
+# Accuracy: 0.9726156751652503
+# AUC-ROC:  0.9890745210307633
+#               precision    recall  f1-score   support
+
+#          0.0     0.9773    0.9860    0.9816      1569
+#          1.0     0.9589    0.9344    0.9465       549

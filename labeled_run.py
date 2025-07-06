@@ -1,4 +1,3 @@
-# 完全等价的 PyTorch 实现 AnnotatorWrapper
 import json
 import jieba
 import numpy as np
@@ -15,7 +14,7 @@ import random
 
 VOCAB_PATH = "new-data/vocab.json"
 EMBEDDING_PATH = "new-data/dsg_embedding.npy"
-WEIGHTS_PATH = "saved_models/best_annotator.pt"
+WEIGHTS_PATH = "saved_models/best_annotator2.pt"
 UNLABELED_CSV = "data-all/data/unlabeled data/news.csv"
 SAVE_DATA_PATH = "data2/weak_labeled_data_with_title.json"
 
@@ -170,7 +169,7 @@ def labeled():
     # 处理未标注数据
     weak_data, probs = annotator.process_unlabeled_data(
         csv_path=UNLABELED_CSV,
-        threshold=0.55
+        threshold=0.5
     )
     # 保存结果
     annotator.save_weak_results(
@@ -179,6 +178,36 @@ def labeled():
     )
     print("[INFO] 未标注数据弱标注完成")
 
+def count_weak_labels(json_path):
+    """
+    读取弱标注 JSON 文件，统计弱正 / 弱负 样本数
+    """
+    with open(json_path, 'r', encoding='utf-8') as f:
+        weak_data = json.load(f)
+
+    label_counts = {0: 0, 1: 0}
+
+    for item in weak_data:
+        label = int(item.get("weak_label", 0))
+        if label in label_counts:
+            label_counts[label] += 1
+        else:
+            label_counts[label] = 1 
+
+    print(f"[INFO] 从 {json_path} 统计到弱标注分布：")
+    for label, count in sorted(label_counts.items()):
+        print(f"  Weak Label {label}: {count} 条")
+
+    total = sum(label_counts.values())
+    print(f"[INFO] 总样本数: {total} 条")
+    return label_counts
+
 if __name__ == "__main__":
-    # labeled()
+    labeled()
     split()
+    count_weak_labels("data2/train_weak_data.json")
+
+# [INFO] 新验证集构建完成：共6753条（fake 1622条，real 5131条）
+# [INFO] 剩余弱标注训练数据：60781条
+# 训练集  Weak Label 0: 46180 条
+# 训练集  Weak Label 1: 14601 条
