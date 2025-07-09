@@ -18,7 +18,7 @@ from text_cnn_encoder import TextCNNEncoder
 EMBEDDING_PATH = "data2/title_dsg.npy"
 TEST_PROCESSED_PATH = "data2/test_labeled_processed.json"
 # MODEL_PATH = "checkpoints/semi_cnn_detector.pt"
-MODEL_PATH = "saved_models/noselect_detector.pt"
+MODEL_PATH = "saved_models/wefend_detector2.pt"
 # BASE_MODEL_PATH = "checkpoints/detector_round_0.pt"
 
 SEQ_LENGTH = 23
@@ -165,7 +165,17 @@ if __name__ == "__main__":
 #          0.0     0.9285    0.9667    0.9472      8659
 #          1.0     0.7440    0.5648    0.6421      1482
 
+# 准确率 (Accuracy): 0.9019
+# AUC-ROC: 0.8876
+# F1分数: 0.6198
 
+# 分类报告:
+#               precision    recall  f1-score   support
+
+#          0.0     0.9255    0.9626    0.9437      8659
+#          1.0     0.7145    0.5472    0.6198      1482
+
+# wefend——
 # 准确率 (Accuracy): 0.9125
 # AUC-ROC: 0.9065
 # F1分数: 0.6324
